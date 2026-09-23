@@ -221,3 +221,26 @@ model ClubSetting {
   roundTo        Int      @default(100) // 部費計算の丸め単位(円)
   updatedAt      DateTime @updatedAt
 }
+
+// ── Neon同期用(ローカル専用・同期対象外) ─────────────────
+// 各テーブルの変更はSQLiteトリガーでSyncOutboxに記録される(src/server/sync.ts)
+
+model SyncOutbox {
+  seq       Int    @id @default(autoincrement())
+  model     String
+  rowId     String
+  changedAt String // ISO8601(UTC, ミリ秒)。後勝ち判定に使う
+
+  @@index([model, rowId])
+}
+
+model SyncState {
+  id            String    @id @default("singleton")
+  deviceId      String
+  lastPulledSeq Int       @default(0) // Neon側 sync_rows.seq の取り込み済み位置
+  hubId         String? // 同期先NeonのID(接続先が変わったら最初から同期し直す)
+  retryRows     String? // 取り込めなかった行 [{model,id}] (JSON)。次回の同期で再試行する
+  initialized   Boolean   @default(false) // 既存データをSyncOutboxへ登録済みか
+  lastSyncAt    DateTime?
+  lastResult    String? // 直近の同期結果(JSON)
+}

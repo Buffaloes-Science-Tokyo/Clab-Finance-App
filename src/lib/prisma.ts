@@ -1,14 +1,12 @@
-import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-
-const dbUrl = process.env.DATABASE_URL ?? "file:./prisma/dev.db";
-const dbFile = dbUrl.replace(/^file:/, "");
+import { localDbFilePath } from "@/lib/db-path";
+import { ensureSyncSetup } from "@/server/sync-local";
 
 function createPrismaClient() {
-  const adapter = new PrismaBetterSqlite3({
-    url: `file:${path.resolve(/* turbopackIgnore: true */ process.cwd(), dbFile)}`,
-  });
+  // 変更追跡トリガーを用意(マイグレーションでテーブルが作り直されると消えるため毎回確認)
+  ensureSyncSetup();
+  const adapter = new PrismaBetterSqlite3({ url: `file:${localDbFilePath()}` });
   return new PrismaClient({ adapter });
 }
 

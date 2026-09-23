@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { connection } from "next/server";
 import { Nav } from "@/components/nav";
 import "./globals.css";
 
@@ -18,7 +19,10 @@ export const metadata: Metadata = {
   description: "部費・ツケ・入出金・予算を一元管理する部活動向け会計アプリ",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // 全ページがローカルDBを読むため、ビルド時に静的生成せずリクエストごとに描画する
+  // (Neon同期で取り込んだデータもすぐ反映される)
+  await connection();
   return (
     <html
       lang="ja"

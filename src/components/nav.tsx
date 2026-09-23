@@ -9,6 +9,7 @@ const links = [
   { href: "/budget", label: "予算・部費計算" },
   { href: "/reports", label: "会計報告" },
   { href: "/settings/categories", label: "カテゴリ設定" },
+  { href: "/sync", label: "Neon同期" },
 ];
 
 export function Nav() {
