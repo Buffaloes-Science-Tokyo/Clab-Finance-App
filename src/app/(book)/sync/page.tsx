@@ -1,10 +1,28 @@
-import { syncWithNeon, getSyncStatus } from "@/server/actions/sync";
+import { syncWithNeon, getSyncStatus, saveNeonUrl } from "@/server/actions/sync";
 import { SubmitButton } from "@/components/submit-button";
-import { Card, PageHeader, StatTile, buttonClass } from "@/components/ui";
+import {
+  Card,
+  PageHeader,
+  StatTile,
+  inputClass,
+  buttonClass,
+  secondaryButtonClass,
+  dangerButtonClass,
+} from "@/components/ui";
 
 async function syncAction() {
   "use server";
   await syncWithNeon();
+}
+
+async function saveNeonUrlAction(formData: FormData) {
+  "use server";
+  await saveNeonUrl(String(formData.get("neonUrl") || ""));
+}
+
+async function clearNeonUrlAction() {
+  "use server";
+  await saveNeonUrl(null);
 }
 
 function formatDateTime(iso: string) {
@@ -22,13 +40,41 @@ export default async function SyncPage() {
         description="このアプリはオフラインでもローカルのデータベースで動作します。インターネットに接続できるときに同期すると、Neonを経由して他の端末と変更をやり取りします。"
       />
 
-      {!status.configured && (
-        <div className="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Neonの接続先が設定されていません。<code>.env</code> に{" "}
-          <code>NEON_DATABASE_URL=&quot;postgresql://...&quot;</code>{" "}
-          を追加して、アプリを再起動してください。
-        </div>
-      )}
+      <Card title="Neonの接続先(この口座専用)" className="mb-6">
+        {status.neonUrlMasked ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <code className="text-xs break-all text-gray-700">{status.neonUrlMasked}</code>
+            <form action={clearNeonUrlAction}>
+              <button type="submit" className={dangerButtonClass}>
+                接続先を解除
+              </button>
+            </form>
+          </div>
+        ) : (
+          <form action={saveNeonUrlAction} className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-64">
+              <label className="block text-xs text-gray-500 mb-1">
+                接続文字列(Neonの「Connection string」)
+              </label>
+              <input
+                name="neonUrl"
+                type="password"
+                required
+                pattern="postgres(ql)?://.+"
+                placeholder="postgresql://user:password@ep-xxxx.neon.tech/neondb?sslmode=require"
+                className={inputClass}
+                autoComplete="off"
+              />
+            </div>
+            <button type="submit" className={secondaryButtonClass}>
+              保存
+            </button>
+          </form>
+        )}
+        <p className="text-xs text-gray-500 mt-2">
+          口座ごとに別のNeonデータベース(またはブランチ)を指定してください。同じ接続先を複数の口座で使うとデータが混ざるため、同期時にエラーになります。他の端末でこの口座を使うときは、同じ名前で口座を追加して同じ接続先を設定し、同期してください。
+        </p>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <StatTile label="未送信の変更" value={`${status.pendingChanges}件`} />
@@ -107,10 +153,13 @@ export default async function SyncPage() {
           <li>
             「後から編集した方」は各端末の時計で判定します。端末の時刻が正しく設定されていることを確認してください。
           </li>
-          <li>新しい端末で使い始めるときは、データを入力する前に一度同期してください。</li>
+          <li>
+            新しい端末で使い始めるときは、口座を追加して接続先を設定し、データを入力する前に一度同期してください。
+          </li>
           <li>
             アプリを更新してデータベースの構造が変わったときは、全端末で同じバージョンに揃えてから同期してください。
           </li>
+          <li>パスワードは端末ごとに設定します(同期されません)。</li>
         </ul>
       </Card>
     </div>

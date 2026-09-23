@@ -1,16 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 import type { MemberType, LedgerEntryType } from "@prisma/client";
 
 export async function listMembers() {
+  const prisma = await getDb();
   return prisma.member.findMany({
     orderBy: [{ type: "asc" }, { period: "desc" }, { name: "asc" }],
   });
 }
 
 export async function getMember(id: string) {
+  const prisma = await getDb();
   return prisma.member.findUnique({
     where: { id },
     include: {
@@ -24,6 +26,7 @@ export async function getMember(id: string) {
 }
 
 export async function getMemberBalances() {
+  const prisma = await getDb();
   const members = await prisma.member.findMany({
     include: { ledgerEntries: { select: { amount: true } } },
     orderBy: [{ type: "asc" }, { name: "asc" }],
@@ -40,6 +43,7 @@ export async function createMember(input: {
   type: MemberType;
   note?: string;
 }) {
+  const prisma = await getDb();
   await prisma.member.create({
     data: {
       name: input.name,
@@ -55,6 +59,7 @@ export async function updateMember(
   id: string,
   input: { name: string; period: string; type: MemberType; note?: string }
 ) {
+  const prisma = await getDb();
   await prisma.member.update({
     where: { id },
     data: {
@@ -69,6 +74,7 @@ export async function updateMember(
 }
 
 export async function deleteMember(id: string) {
+  const prisma = await getDb();
   await prisma.member.delete({ where: { id } });
   revalidatePath("/members");
 }
@@ -80,6 +86,7 @@ export async function addLedgerEntry(input: {
   description?: string;
   date?: Date;
 }) {
+  const prisma = await getDb();
   const entry = await prisma.memberLedgerEntry.create({
     data: {
       memberId: input.memberId,
@@ -95,6 +102,7 @@ export async function addLedgerEntry(input: {
 }
 
 export async function deleteLedgerEntry(id: string) {
+  const prisma = await getDb();
   const entry = await prisma.memberLedgerEntry.delete({ where: { id } });
   revalidatePath(`/members/${entry.memberId}`);
   revalidatePath("/members");

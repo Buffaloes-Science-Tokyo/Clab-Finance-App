@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { localDbFilePath } from "@/lib/db-path";
 
 /**
  * Neon同期のローカル(SQLite)側。
@@ -41,8 +40,8 @@ export type ApplyResult = {
   errors: { model: string; id: string; message: string }[];
 };
 
-export function openLocalDb(): Db {
-  const db = new Database(localDbFilePath(), { fileMustExist: true });
+export function openLocalDb(dbFile: string): Db {
+  const db = new Database(dbFile, { fileMustExist: true });
   db.pragma("busy_timeout = 5000");
   return db;
 }
@@ -103,10 +102,10 @@ function readState(db: Db): SyncStateRow | undefined {
  * マイグレーションでテーブルが作り直されるとトリガーが消えるため、起動時と同期時に呼ぶ。
  * 同期用テーブルがまだ無い(マイグレーション未適用)場合は何もしない。
  */
-export function ensureSyncSetup(): void {
+export function ensureSyncSetup(dbFile: string): void {
   let db: Db;
   try {
-    db = openLocalDb();
+    db = openLocalDb(dbFile);
   } catch {
     return;
   }

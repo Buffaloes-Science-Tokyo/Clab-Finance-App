@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 import type { TransactionType } from "@prisma/client";
 
 export async function listTransactions(filters?: {
@@ -12,6 +12,7 @@ export async function listTransactions(filters?: {
   categoryId?: string;
   virtualAccountId?: string;
 }) {
+  const prisma = await getDb();
   return prisma.transaction.findMany({
     where: {
       date:
@@ -29,6 +30,7 @@ export async function listTransactions(filters?: {
 }
 
 export async function getTransaction(id: string) {
+  const prisma = await getDb();
   return prisma.transaction.findUnique({
     where: { id },
     include: { category: true, member: true, receipts: true, virtualAccount: true },
@@ -47,6 +49,7 @@ export async function createTransaction(input: {
   /** trueの場合、部員の個人台帳に「支払い」として反映し未払い残高を減らす */
   recordAsMemberPayment?: boolean;
 }) {
+  const prisma = await getDb();
   const transaction = await prisma.transaction.create({
     data: {
       date: input.date,
@@ -77,7 +80,7 @@ export async function createTransaction(input: {
 
   revalidatePath("/transactions");
   revalidatePath("/accounts", "layout");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return transaction;
 }
 
@@ -94,6 +97,7 @@ export async function updateTransaction(
     virtualAccountId?: string;
   }
 ) {
+  const prisma = await getDb();
   await prisma.transaction.update({
     where: { id },
     data: {
@@ -109,10 +113,11 @@ export async function updateTransaction(
   });
   revalidatePath("/transactions");
   revalidatePath("/accounts", "layout");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
 }
 
 export async function deleteTransaction(id: string) {
+  const prisma = await getDb();
   const linked = await prisma.memberLedgerEntry.findMany({
     where: { transactionId: id },
   });
@@ -124,7 +129,7 @@ export async function deleteTransaction(id: string) {
   revalidatePath("/transactions");
   revalidatePath("/accounts", "layout");
   revalidatePath("/members");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
 }
 
 /** 部員のツケ(未払い)を記録する。実際の現金は動かない。 */
@@ -134,6 +139,7 @@ export async function recordTab(input: {
   description?: string;
   date?: Date;
 }) {
+  const prisma = await getDb();
   await prisma.memberLedgerEntry.create({
     data: {
       memberId: input.memberId,

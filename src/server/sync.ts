@@ -1,4 +1,5 @@
 import { Client } from "pg";
+import { claimNeonHub, type Book } from "@/server/books";
 import {
   openLocalDb,
   ensureSyncSetup,
@@ -60,10 +61,6 @@ export type SyncResult = {
   finishedAt: string;
 };
 
-export function isNeonConfigured() {
-  return !!process.env.NEON_DATABASE_URL;
-}
-
 function emptyResult(): SyncResult {
   return {
     ok: false,
@@ -88,40 +85,40 @@ function describeConnectionError(e: unknown): string {
     return "Neonへの接続がタイムアウトしました。インターネット接続を確認してください。";
   }
   if (/password authentication failed/i.test(message)) {
-    return "Neonの認証に失敗しました。NEON_DATABASE_URL のユーザー名・パスワードを確認してください。";
+    return "Neonの認証に失敗しました。接続先URLのユーザー名・パスワードを確認してください。";
   }
   return `Neonとの通信でエラーが発生しました: ${message}`;
 }
 
-let running = false;
+const running = new Set<string>();
 
-export async function runSync(): Promise<SyncResult> {
+export async function runSync(book: Book): Promise<SyncResult> {
   const result = emptyResult();
-  const url = process.env.NEON_DATABASE_URL;
+  const url = book.neonUrl;
   if (!url) {
-    result.error = ".env に NEON_DATABASE_URL が設定されていません。";
+    result.error = "Neonの接続先が設定されていません。";
     return result;
   }
-  if (running) {
+  if (running.has(book.id)) {
     result.error = "同期は既に実行中です。";
     return result;
   }
-  running = true;
+  running.add(book.id);
 
-  ensureSyncSetup();
+  ensureSyncSetup(book.dbFile);
   let db: ReturnType<typeof openLocalDb>;
   try {
-    db = openLocalDb();
+    db = openLocalDb(book.dbFile);
   } catch (e) {
-    running = false;
+    running.delete(book.id);
     result.error = `ローカルのデータベースを開けませんでした: ${e instanceof Error ? e.message : e}`;
     return result;
   }
   if (!isSyncReady(db)) {
     db.close();
-    running = false;
+    running.delete(book.id);
     result.error =
-      "同期用のテーブルがありません。npm run db:migrate を実行してからアプリを再起動してください。";
+      "同期用のテーブルがありません。アプリを再起動してから、口座を開き直してください。";
     return result;
   }
   const client = new Client({
@@ -144,6 +141,12 @@ export async function runSync(): Promise<SyncResult> {
     const remoteHubId = (
       await client.query<{ value: string }>("SELECT value FROM sync_meta WHERE key = 'hub_id'")
     ).rows[0].value;
+    // 口座ごとにNeonを分ける(同じNeonを使うと別の口座のデータが混ざる)
+    const otherBook = claimNeonHub(book.id, remoteHubId);
+    if (otherBook) {
+      result.error = `この接続先は口座「${otherBook}」の同期に使われています。口座ごとに別のNeonデータベース(またはブランチ)を指定してください。`;
+      return result;
+    }
     if (hubId !== remoteHubId) switchHub(db, remoteHubId);
 
     // ── 1. 送信 ──────────────────────────
@@ -237,7 +240,7 @@ export async function runSync(): Promise<SyncResult> {
     } finally {
       db.close();
       await client.end().catch(() => {});
-      running = false;
+      running.delete(book.id);
     }
   }
 }

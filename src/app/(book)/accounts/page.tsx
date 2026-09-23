@@ -7,7 +7,7 @@ import {
   createVirtualAccountTransfer,
   deleteVirtualAccountTransfer,
 } from "@/server/actions/accounts";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 import { yen, formatDate, toDateInputValue } from "@/lib/format";
 import {
   Card,
@@ -23,6 +23,7 @@ async function createAccountAction(formData: FormData) {
   "use server";
   const name = String(formData.get("name") || "").trim();
   if (!name) return;
+  const prisma = await getDb();
   const exists = await prisma.virtualAccount.findUnique({ where: { name } });
   if (exists) {
     redirect(`/accounts?error=${encodeURIComponent(`「${name}」は既に存在します。`)}`);
@@ -69,6 +70,7 @@ export default async function AccountsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  const prisma = await getDb();
   const [{ accounts, unassigned }, transfers] = await Promise.all([
     getVirtualAccountBalances(),
     prisma.virtualAccountTransfer.findMany({

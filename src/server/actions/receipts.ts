@@ -4,7 +4,7 @@ import { mkdir, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 
 const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "receipts");
 
@@ -18,6 +18,7 @@ export async function uploadReceipt(input: {
   transactionId?: string;
   ledgerEntryId?: string;
 }) {
+  const prisma = await getDb();
   if (!input.file || input.file.size === 0) return null;
 
   await mkdir(UPLOAD_DIR, { recursive: true });
@@ -41,6 +42,7 @@ export async function uploadReceipt(input: {
 }
 
 export async function deleteReceipt(id: string) {
+  const prisma = await getDb();
   const receipt = await prisma.receipt.findUnique({ where: { id } });
   if (!receipt) return;
   await prisma.receipt.delete({ where: { id } });

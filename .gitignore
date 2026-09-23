@@ -49,3 +49,6 @@ next-env.d.ts
 # uploaded receipts
 /public/uploads
 
+
+# 口座ごとのデータベース
+/data

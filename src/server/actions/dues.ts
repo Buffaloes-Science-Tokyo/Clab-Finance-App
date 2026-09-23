@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 import { DUES_EXCLUDED_TYPES } from "@/lib/constants";
 
 export async function listDuesItems() {
+  const prisma = await getDb();
   return prisma.duesItem.findMany({
     orderBy: { createdAt: "asc" },
     include: { category: true },
@@ -16,6 +17,7 @@ export async function createDuesItem(input: {
   amount: number;
   categoryId?: string;
 }) {
+  const prisma = await getDb();
   await prisma.duesItem.create({
     data: {
       name: input.name,
@@ -35,6 +37,7 @@ export async function updateDuesItem(
     isActive: boolean;
   }
 ) {
+  const prisma = await getDb();
   await prisma.duesItem.update({
     where: { id },
     data: {
@@ -48,11 +51,13 @@ export async function updateDuesItem(
 }
 
 export async function deleteDuesItem(id: string) {
+  const prisma = await getDb();
   await prisma.duesItem.delete({ where: { id } });
   revalidatePath("/dues");
 }
 
 export async function listDuesRecords(yearMonth?: string) {
+  const prisma = await getDb();
   return prisma.memberDuesRecord.findMany({
     where: yearMonth ? { yearMonth } : undefined,
     include: { member: true, items: true },
@@ -68,6 +73,7 @@ export async function generateMonthlyDues(
   yearMonth: string,
   memberTypesExcluded: string[] = DUES_EXCLUDED_TYPES
 ) {
+  const prisma = await getDb();
   const [duesItems, members, existing] = await Promise.all([
     prisma.duesItem.findMany({ where: { isActive: true } }),
     prisma.member.findMany({
@@ -117,6 +123,7 @@ export async function generateMonthlyDues(
 }
 
 export async function deleteDuesRecord(id: string) {
+  const prisma = await getDb();
   const record = await prisma.memberDuesRecord.findUnique({ where: { id } });
   if (!record) return;
   await prisma.memberLedgerEntry.deleteMany({ where: { duesRecordId: id } });

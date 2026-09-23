@@ -1,17 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 
 function revalidateAccounts(id?: string) {
   revalidatePath("/accounts");
   if (id) revalidatePath(`/accounts/${id}`);
   revalidatePath("/transactions");
   revalidatePath("/reports");
-  revalidatePath("/");
+  revalidatePath("/dashboard");
 }
 
 export async function listVirtualAccounts(options?: { activeOnly?: boolean }) {
+  const prisma = await getDb();
   return prisma.virtualAccount.findMany({
     where: options?.activeOnly ? { isActive: true } : undefined,
     orderBy: { createdAt: "asc" },
@@ -39,6 +40,7 @@ export async function getVirtualAccountBalances(asOf?: Date): Promise<{
   accounts: VirtualAccountBalance[];
   unassigned: number;
 }> {
+  const prisma = await getDb();
   const dateFilter = asOf ? { date: { lt: asOf } } : {};
   const [accounts, txSums, transferOutSums, transferInSums] = await Promise.all([
     listVirtualAccounts(),
@@ -87,6 +89,7 @@ export async function getVirtualAccountBalances(asOf?: Date): Promise<{
 }
 
 export async function getVirtualAccount(id: string) {
+  const prisma = await getDb();
   return prisma.virtualAccount.findUnique({
     where: { id },
     include: {
@@ -104,6 +107,7 @@ export async function createVirtualAccount(input: {
   name: string;
   note?: string;
 }) {
+  const prisma = await getDb();
   await prisma.virtualAccount.create({
     data: {
       name: input.name.trim(),
@@ -117,6 +121,7 @@ export async function updateVirtualAccount(
   id: string,
   input: { name: string; note?: string; isActive: boolean }
 ) {
+  const prisma = await getDb();
   await prisma.virtualAccount.update({
     where: { id },
     data: {
@@ -130,6 +135,7 @@ export async function updateVirtualAccount(
 
 /** 記録が一件もない仮想口座のみ削除できる。記録がある場合は無効化で対応する。 */
 export async function deleteVirtualAccount(id: string) {
+  const prisma = await getDb();
   const [txCount, transferCount] = await Promise.all([
     prisma.transaction.count({ where: { virtualAccountId: id } }),
     prisma.virtualAccountTransfer.count({
@@ -153,6 +159,7 @@ export async function createVirtualAccountTransfer(input: {
   toAccountId: string;
   description?: string;
 }) {
+  const prisma = await getDb();
   if (input.fromAccountId === input.toAccountId) {
     throw new Error("振替元と振替先に同じ仮想口座は指定できません。");
   }
@@ -170,6 +177,7 @@ export async function createVirtualAccountTransfer(input: {
 }
 
 export async function deleteVirtualAccountTransfer(id: string) {
+  const prisma = await getDb();
   const transfer = await prisma.virtualAccountTransfer.delete({ where: { id } });
   revalidateAccounts(transfer.fromAccountId);
   revalidateAccounts(transfer.toAccountId);

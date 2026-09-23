@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 import type { BudgetPeriodType } from "@prisma/client";
 import { DUES_EXCLUDED_TYPES } from "@/lib/constants";
 import { periodRange } from "@/lib/period";
 
 export async function getClubSetting() {
+  const prisma = await getDb();
   return prisma.clubSetting.upsert({
     where: { id: "singleton" },
     update: {},
@@ -18,6 +19,7 @@ export async function updateClubSetting(input: {
   poolFundTarget: number;
   roundTo: number;
 }) {
+  const prisma = await getDb();
   await prisma.clubSetting.upsert({
     where: { id: "singleton" },
     update: { poolFundTarget: input.poolFundTarget, roundTo: input.roundTo },
@@ -31,6 +33,7 @@ export async function updateClubSetting(input: {
 }
 
 export async function listBudgets(periodType: BudgetPeriodType, period: string) {
+  const prisma = await getDb();
   return prisma.budget.findMany({
     where: { periodType, period },
     include: { category: true },
@@ -45,6 +48,7 @@ export async function upsertBudget(input: {
   plannedAmount: number;
   note?: string;
 }) {
+  const prisma = await getDb();
   await prisma.budget.upsert({
     where: {
       periodType_period_categoryId: {
@@ -66,12 +70,14 @@ export async function upsertBudget(input: {
 }
 
 export async function deleteBudget(id: string) {
+  const prisma = await getDb();
   await prisma.budget.delete({ where: { id } });
   revalidatePath("/budget");
 }
 
 /** 実際のクラブ残高(指定日時点、指定日を含まない)を計算する */
 export async function getClubBalanceAsOf(date: Date) {
+  const prisma = await getDb();
   const [income, expense] = await Promise.all([
     prisma.transaction.aggregate({
       where: { type: "INCOME", date: { lt: date } },
@@ -110,6 +116,7 @@ export async function calculateOptimalDues(input: {
   otherIncomeOverride?: number;
   memberCountOverride?: number;
 }): Promise<OptimalDuesResult> {
+  const prisma = await getDb();
   const { start } = periodRange(input.periodType, input.period);
 
   const [budgets, setting, memberCount, currentClubBalance] = await Promise.all([

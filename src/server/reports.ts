@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { getDb } from "@/lib/prisma";
 import type { BudgetPeriodType } from "@prisma/client";
 import { periodRange, periodLabel } from "@/lib/period";
 import { getVirtualAccountBalances } from "@/server/actions/accounts";
@@ -47,6 +47,7 @@ export async function getPeriodReport(
   periodType: BudgetPeriodType,
   period: string
 ): Promise<PeriodReport> {
+  const prisma = await getDb();
   const { start, end } = periodRange(periodType, period);
 
   const transactions = await prisma.transaction.findMany({

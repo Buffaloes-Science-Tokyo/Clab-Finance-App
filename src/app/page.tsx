@@ -1,170 +1,151 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
-import { getClubBalanceAsOf } from "@/server/actions/budget";
-import { getVirtualAccountBalances } from "@/server/actions/accounts";
-import { getPeriodReport } from "@/server/reports";
-import { currentYearMonth } from "@/lib/period";
-import { yen, formatDate } from "@/lib/format";
-import { Card, StatTile, PageHeader } from "@/components/ui";
-import { MEMBER_TYPE_LABELS } from "@/lib/constants";
+import { listBooks, hasLegacyData, MIN_PASSWORD_LENGTH } from "@/server/books";
+import { getCurrentBook } from "@/server/session";
+import {
+  createBookAction,
+  importLegacyAction,
+  openBookAction,
+} from "@/server/actions/books";
+import { Card, inputClass, buttonClass, secondaryButtonClass } from "@/components/ui";
 
-export default async function DashboardPage() {
-  const yearMonth = currentYearMonth();
-  const [clubBalance, report, recentTransactions, virtualAccounts] = await Promise.all([
-    getClubBalanceAsOf(new Date()),
-    getPeriodReport("MONTH", yearMonth),
-    prisma.transaction.findMany({
-      orderBy: { date: "desc" },
-      take: 8,
-      include: { category: true, member: true, virtualAccount: true },
-    }),
-    getVirtualAccountBalances(),
-  ]);
+function NewBookFields({ namePlaceholder }: { namePlaceholder: string }) {
+  return (
+    <>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">口座名</label>
+        <input name="name" required className={inputClass} placeholder={namePlaceholder} />
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">
+          パスワード({MIN_PASSWORD_LENGTH}文字以上)
+        </label>
+        <input
+          name="password"
+          type="password"
+          required
+          minLength={MIN_PASSWORD_LENGTH}
+          autoComplete="new-password"
+          className={inputClass}
+        />
+      </div>
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">パスワード(確認)</label>
+        <input
+          name="passwordConfirm"
+          type="password"
+          required
+          minLength={MIN_PASSWORD_LENGTH}
+          autoComplete="new-password"
+          className={inputClass}
+        />
+      </div>
+    </>
+  );
+}
 
-  const topDebtors = report.memberBalances.filter((m) => m.balance > 0).slice(0, 6);
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; book?: string; form?: string }>;
+}) {
+  const sp = await searchParams;
+  const [books, current] = [listBooks(), await getCurrentBook()];
+  const showLegacyImport = hasLegacyData();
 
   return (
-    <div>
-      <PageHeader
-        title="ダッシュボード"
-        description={`${report.label}時点のサマリー`}
-      />
+    <div className="mx-auto max-w-2xl px-4 py-10">
+      <h1 className="text-2xl font-bold text-gray-900">部活会計</h1>
+      <p className="text-sm text-gray-500 mt-1 mb-8">
+        使用する口座を選んでください。口座ごとにデータは別々に保存されます。
+      </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatTile label="現在のクラブ残高(現金)" value={yen(clubBalance)} />
-        <StatTile
-          label="今月の収入(現金)"
-          value={yen(report.cash.income)}
-          tone="positive"
-        />
-        <StatTile
-          label="今月の支出(現金)"
-          value={yen(report.cash.expense)}
-          tone="negative"
-        />
-        <StatTile
-          label="部員の未収残高合計"
-          value={yen(report.outstandingBalanceEnd)}
-        />
-      </div>
-
-      <Card title="仮想口座別 残高" className="mb-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {virtualAccounts.accounts
-            .filter((a) => a.isActive || a.balance !== 0)
-            .map((a) => (
-              <Link
-                key={a.id}
-                href={`/accounts/${a.id}`}
-                className="rounded-md border border-gray-100 px-3 py-2 hover:bg-gray-50"
-              >
-                <p className="text-xs text-gray-500">{a.name}</p>
-                <p
-                  className={`text-lg font-semibold ${
-                    a.balance < 0 ? "text-red-600" : "text-gray-900"
-                  }`}
-                >
-                  {yen(a.balance)}
-                </p>
-              </Link>
-            ))}
-          {virtualAccounts.unassigned !== 0 && (
-            <div className="rounded-md border border-gray-100 px-3 py-2">
-              <p className="text-xs text-gray-500">未割当</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {yen(virtualAccounts.unassigned)}
-              </p>
-            </div>
-          )}
-        </div>
-        <Link
-          href="/accounts"
-          className="text-sm text-blue-600 hover:underline mt-3 inline-block"
-        >
-          仮想口座を管理する →
-        </Link>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="最近の入出金">
-          {recentTransactions.length === 0 ? (
-            <p className="text-sm text-gray-500">記録がありません。</p>
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {recentTransactions.map((t) => (
-                <li
-                  key={t.id}
-                  className="py-2 flex items-center justify-between text-sm"
-                >
-                  <div>
-                    <p className="text-gray-900">
-                      {t.category?.name ?? "未分類"}
-                      {t.virtualAccount && (
-                        <span className="text-gray-400"> ・ {t.virtualAccount.name}</span>
-                      )}
-                      {t.member && (
-                        <span className="text-gray-400"> ・ {t.member.name}</span>
-                      )}
-                    </p>
+      <Card title="口座を選択" className="mb-6">
+        {books.length === 0 ? (
+          <p className="text-sm text-gray-500">口座がありません。下から追加してください。</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {books.map((b) => (
+              <li key={b.id} className="py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex-1 min-w-40">
+                    <p className="font-medium text-gray-900">{b.name}</p>
                     <p className="text-xs text-gray-400">
-                      {formatDate(t.date)} {t.description}
+                      作成日 {new Date(b.createdAt).toLocaleDateString("ja-JP")}
+                      {b.neonUrl ? " ・ Neon同期あり" : ""}
                     </p>
                   </div>
-                  <span
-                    className={
-                      t.type === "INCOME"
-                        ? "text-emerald-600 font-medium"
-                        : "text-red-600 font-medium"
-                    }
-                  >
-                    {t.type === "INCOME" ? "+" : "-"}
-                    {yen(t.amount)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link
-            href="/transactions"
-            className="text-sm text-blue-600 hover:underline mt-3 inline-block"
-          >
-            すべて見る →
-          </Link>
-        </Card>
-
-        <Card title="未払いが多い部員">
-          {topDebtors.length === 0 ? (
-            <p className="text-sm text-gray-500">未払いの部員はいません。</p>
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {topDebtors.map((m) => (
-                <li
-                  key={m.id}
-                  className="py-2 flex items-center justify-between text-sm"
-                >
+                  {current?.id === b.id ? (
+                    <Link href="/dashboard" className={buttonClass}>
+                      続ける
+                    </Link>
+                  ) : (
+                    <form action={openBookAction} className="flex items-center gap-2">
+                      <input type="hidden" name="bookId" value={b.id} />
+                      <input
+                        name="password"
+                        type="password"
+                        required
+                        placeholder="パスワード"
+                        autoComplete="current-password"
+                        aria-label={`${b.name} のパスワード`}
+                        className={`${inputClass} w-40`}
+                      />
+                      <button type="submit" className={buttonClass}>
+                        開く
+                      </button>
+                    </form>
+                  )}
+                </div>
+                {sp.error && sp.book === b.id && (
+                  <p className="mt-1 text-sm text-red-600">{sp.error}</p>
+                )}
+                {current?.id !== b.id && (
                   <Link
-                    href={`/members/${m.id}`}
-                    className="text-gray-900 hover:underline"
+                    href={`/reset-password?book=${b.id}`}
+                    className="mt-1 inline-block text-xs text-gray-500 hover:text-blue-600 hover:underline"
                   >
-                    {m.name}
-                    <span className="text-gray-400">
-                      {" "}
-                      ・ {MEMBER_TYPE_LABELS[m.type as keyof typeof MEMBER_TYPE_LABELS]}
-                    </span>
+                    パスワードを忘れた場合
                   </Link>
-                  <span className="text-red-600 font-medium">{yen(m.balance)}</span>
-                </li>
-              ))}
-            </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card title="口座を追加" className="mb-6">
+        <form action={createBookAction} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <NewBookFields namePlaceholder="例: 〇〇部 2026年度" />
+          <div className="md:col-span-3">
+            <button type="submit" className={buttonClass}>
+              追加して開く
+            </button>
+          </div>
+        </form>
+        {sp.error && sp.form === "create" && <p className="mt-2 text-sm text-red-600">{sp.error}</p>}
+        <p className="text-xs text-gray-500 mt-3">
+          口座を開くときにこのパスワードが必要です。追加するとパスワードを忘れたとき用のリカバリーコードが表示されるので、控えておいてください。
+        </p>
+      </Card>
+
+      {showLegacyImport && (
+        <Card title="既存のデータを口座として取り込む">
+          <p className="text-sm text-gray-600 mb-3">
+            口座機能の導入前に入力したデータがあります。名前とパスワードを付けて口座にできます(Neonの同期設定も引き継ぎます)。
+          </p>
+          <form action={importLegacyAction} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+            <NewBookFields namePlaceholder="例: 〇〇部" />
+            <div className="md:col-span-3">
+              <button type="submit" className={secondaryButtonClass}>
+                取り込んで開く
+              </button>
+            </div>
+          </form>
+          {sp.error && sp.form === "import" && (
+            <p className="mt-2 text-sm text-red-600">{sp.error}</p>
           )}
-          <Link
-            href="/members"
-            className="text-sm text-blue-600 hover:underline mt-3 inline-block"
-          >
-            部員一覧を見る →
-          </Link>
         </Card>
-      </div>
+      )}
     </div>
   );
 }
