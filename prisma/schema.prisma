@@ -1,0 +1,223 @@
+// 部活動 会計管理アプリ データベーススキーマ
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ── 部員 ─────────────────────────────────────────────
+
+enum MemberType {
+  PLAYER // 選手
+  STAFF // スタッフ
+  STUDENT_COACH // 学生コーチ
+  WORKING_ADULT // 社会人
+  WITHDRAWN // 退部
+  OTHER // ?
+}
+
+model Member {
+  id        String     @id @default(cuid())
+  name      String
+  period    String // 期(例: "52期")
+  type      MemberType @default(PLAYER)
+  note      String?
+  joinedAt  DateTime   @default(now())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  ledgerEntries MemberLedgerEntry[]
+  duesRecords   MemberDuesRecord[]
+  transactions  Transaction[]
+}
+
+// ── 部員の個人台帳(部費請求・ツケ・入金による未払い残高) ──────
+
+enum LedgerEntryType {
+  DUES_CHARGE // 部費請求(計上)
+  TAB_CHARGE // ツケ発生
+  PAYMENT // 入金・精算
+  ADJUSTMENT // 手動調整
+}
+
+model MemberLedgerEntry {
+  id          String          @id @default(cuid())
+  memberId    String
+  member      Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  type        LedgerEntryType
+  // 正の値 = 部員の負債(未払い)が増える、負の値 = 支払い等で減る
+  amount      Int
+  date        DateTime        @default(now())
+  description String?
+
+  duesRecordId String?
+  duesRecord   MemberDuesRecord? @relation(fields: [duesRecordId], references: [id])
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  receipts  Receipt[]
+  createdAt DateTime  @default(now())
+}
+
+// ── カテゴリ(収支・部費内訳・予算で共通利用) ──────────
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+model Category {
+  id       String          @id @default(cuid())
+  name     String          @unique
+  type     TransactionType
+  isActive Boolean         @default(true)
+
+  transactions Transaction[]
+  duesItems    DuesItem[]
+  budgets      Budget[]
+}
+
+// ── 仮想口座(部が持つ、用途別のお金の区分) ────────────
+// 実際のお金は一つの口座にあるが、「部」「寄付」「イヤーブック」のように
+// 扱いを分けて管理する。残高はマイナスになることもある。
+
+model VirtualAccount {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  note      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  transfersOut VirtualAccountTransfer[] @relation("TransferFrom")
+  transfersIn  VirtualAccountTransfer[] @relation("TransferTo")
+}
+
+// 仮想口座間の振替(実際のお金は動かない)
+model VirtualAccountTransfer {
+  id            String         @id @default(cuid())
+  date          DateTime       @default(now())
+  amount        Int
+  fromAccountId String
+  fromAccount   VirtualAccount @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccountId   String
+  toAccount     VirtualAccount @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: Restrict)
+  description   String?
+  createdAt     DateTime       @default(now())
+}
+
+// ── 入出金記録(部全体の実際のお金の動き) ──────────────
+
+model Transaction {
+  id          String          @id @default(cuid())
+  date        DateTime        @default(now())
+  type        TransactionType
+  amount      Int
+  categoryId  String?
+  category    Category?       @relation(fields: [categoryId], references: [id])
+  memberId    String?
+  member      Member?         @relation(fields: [memberId], references: [id])
+  description String?
+  method      String? // 現金 / 振込 など
+
+  virtualAccountId String?
+  virtualAccount   VirtualAccount? @relation(fields: [virtualAccountId], references: [id], onDelete: Restrict)
+
+  receipts      Receipt[]
+  ledgerEntries MemberLedgerEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── レシート添付 ─────────────────────────────────────
+
+model Receipt {
+  id       String @id @default(cuid())
+  url      String
+  fileName String
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  ledgerEntryId String?
+  ledgerEntry   MemberLedgerEntry? @relation(fields: [ledgerEntryId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+// ── 部費内訳マスタ ────────────────────────────────────
+
+model DuesItem {
+  id         String    @id @default(cuid())
+  name       String // 例: 施設費, 備品費
+  amount     Int
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+  isActive   Boolean   @default(true)
+
+  recordItems DuesRecordItem[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// ── 部員ごとの月次部費計上 ────────────────────────────
+
+model MemberDuesRecord {
+  id            String              @id @default(cuid())
+  memberId      String
+  member        Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  yearMonth     String // "2026-09"
+  totalAmount   Int
+  items         DuesRecordItem[]
+  ledgerEntries MemberLedgerEntry[]
+  createdAt     DateTime            @default(now())
+
+  @@unique([memberId, yearMonth])
+}
+
+model DuesRecordItem {
+  id           String           @id @default(cuid())
+  duesRecordId String
+  duesRecord   MemberDuesRecord @relation(fields: [duesRecordId], references: [id], onDelete: Cascade)
+  duesItemId   String?
+  duesItem     DuesItem?        @relation(fields: [duesItemId], references: [id])
+  name         String
+  amount       Int
+}
+
+// ── 予算 ─────────────────────────────────────────────
+
+enum BudgetPeriodType {
+  MONTH
+  QUARTER
+  YEAR
+}
+
+model Budget {
+  id            String           @id @default(cuid())
+  periodType    BudgetPeriodType
+  period        String // MONTH: "2026-09" / QUARTER: "2026-Q3" / YEAR: "2026"
+  categoryId    String
+  category      Category         @relation(fields: [categoryId], references: [id])
+  plannedAmount Int
+  note          String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([periodType, period, categoryId])
+}
+
+// ── クラブ全体設定(プール金など) ──────────────────────
+
+model ClubSetting {
+  id             String   @id @default("singleton")
+  poolFundTarget Int      @default(0) // プール金目標額
+  roundTo        Int      @default(100) // 部費計算の丸め単位(円)
+  updatedAt      DateTime @updatedAt
+}
